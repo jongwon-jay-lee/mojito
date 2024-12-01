@@ -606,6 +606,90 @@ class KoreaInvestment:
         res = requests.get(url, headers=headers, params=params)
         return res.json()
 
+    def fetch_today_1m_ohlcv_oversea(self, symbol: str, excd: str):
+        """헤외주식시세/주식당일분봉조회
+
+        Args:
+            symbol (str): 6자리 종목코드
+            to (str, optional): "HH:MM:00". Defaults to "".
+        """
+        result = {}
+        now = datetime.datetime.now()
+        to = ""
+        if to == "":
+            to = now.strftime("%H%M%S")
+
+            # kospi market end time
+            if to > "033000":
+                to = "033000"
+
+        output = self._fetch_today_1m_ohlcv_oversea(symbol, excd, next="", keyb="")
+        output2 = output['output2']
+        last_hour_dt = output2[-1]['xymd']
+        last_hour = output2[-1]['xhms']
+
+        result['output1'] = output['output1']
+        result['output2'] = output2
+
+        while last_hour > "093000":     # 현지시간
+            # last minute
+            dt1 = datetime.datetime(
+                year=int(last_hour_dt[0:4]),
+                month=int(last_hour_dt[4:6]),
+                day=int(last_hour_dt[6:8]),
+                hour=int(last_hour[:2]),
+                minute=int(last_hour[2:4])
+            )
+            delta = datetime.timedelta(minutes=1)
+
+            # 1 minute ago
+            dt2 = dt1 - delta
+            keyb = dt2.strftime("%Y%m%d%H%M%S")
+
+            # request 1minute ohlcv
+            output = self._fetch_today_1m_ohlcv_oversea(symbol, excd, next="1", keyb=keyb)
+            output2 = output['output2']
+            # last_hour = output2[-1]['stck_cntg_hour']
+            last_hour_dt = output2[-1]['xymd']
+            last_hour = output2[-1]['xhms']
+
+            result['output2'].extend(output2)
+
+        return result
+        
+    def _fetch_today_1m_ohlcv_oversea(self, symbol: str, excd: str, next: str, keyb: str):
+        """국내주식시세/주식당일분봉조회
+
+        Args:
+            symbol (str): 6자리 종목코드
+            to (str): "HH:MM:SS"
+        """
+        # https://apiportal.koreainvestment.com/apiservice/apiservice-oversea-stock-quotations#L_852d7e45-4f34-418b-b6a1-a4552bbcdf90
+        path = "/uapi/overseas-price/v1/quotations/inquire-time-itemchartprice"
+        url = f"{self.base_url}/{path}"
+        headers = {
+           "content-type": "application/json; charset=utf-8",
+           "authorization": self.access_token,
+           "appKey": self.api_key,
+           "appSecret": self.api_secret,
+           "tr_id": "HHDFS76950200",
+           "tr_cont": "",
+        }
+
+        params = {
+            "AUTH": "",
+            "EXCD": excd,
+            "SYMB": symbol,
+            "NMIN": "1",
+            "PINC": "0",    # 0: 당일, 1: 전일포함
+            "NEXT": next,
+            "NREC": "120",
+            "FILL": "",
+            "KEYB": keyb  # (형식: YYYYMMDDHHMMSS, ex. 20241014140100)
+        }
+        res = requests.get(url, headers=headers, params=params)
+        return res.json()
+
     def fetch_ohlcv(self, symbol: str, timeframe: str = 'D', start_day:str="", end_day:str="",
                     adj_price: bool = True) -> dict:
         """fetch OHLCV (day, week, month)
